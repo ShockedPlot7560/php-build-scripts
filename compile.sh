@@ -1,27 +1,29 @@
 #!/bin/bash
-[ -z "$PHP_VERSION" ] && PHP_VERSION="8.0.26"
+[ -z "$PHP_VERSION" ] && PHP_VERSION="8.0.27"
 
 ZLIB_VERSION="1.2.13"
 GMP_VERSION="6.2.1"
-CURL_VERSION="curl-7_86_0"
+CURL_VERSION="curl-7_87_0"
 YAML_VERSION="0.2.5"
 LEVELDB_VERSION="1c7564468b41610da4f498430e795ca4de0931ff"
 LIBXML_VERSION="2.10.1" #2.10.2 requires automake 1.16.3, which isn't easily available on Ubuntu 20.04
-LIBPNG_VERSION="1.6.38"
+LIBPNG_VERSION="1.6.39"
 LIBJPEG_VERSION="9e"
 LIBMONGOC_VERSION="1.23.2"
 OPENSSL_VERSION="1.1.1s"
 LIBZIP_VERSION="1.9.2"
 SQLITE3_YEAR="2022"
-SQLITE3_VERSION="3400000" #3.40.0
+SQLITE3_VERSION="3400100" #3.40.0
 LIBDEFLATE_VERSION="0d1779a071bcc636e5156ddb7538434da7acad22" #1.14
 
-EXT_PTHREADS_VERSION="4.1.4"
+EXT_PTHREADS_VERSION_PM4="4.2.1"
+EXT_PTHREADS_VERSION_PM5="5.2.4"
+EXT_PTHREADS_VERSION="$EXT_PTHREADS_VERSION_PM4"
 EXT_YAML_VERSION="2.2.2"
 EXT_LEVELDB_VERSION="317fdcd8415e1566fc2835ce2bdb8e19b890f9f3"
 EXT_CHUNKUTILS2_VERSION="0.3.3"
-EXT_XDEBUG_VERSION="3.1.6"
-EXT_IGBINARY_VERSION="3.2.12"
+EXT_XDEBUG_VERSION="3.2.0"
+EXT_IGBINARY_VERSION="3.2.13"
 EXT_CRYPTO_VERSION="0.3.2"
 EXT_RECURSIONGUARD_VERSION="0.1.0"
 EXT_LIBDEFLATE_VERSION="0.1.0"
@@ -126,7 +128,9 @@ LD_PRELOAD=""
 
 COMPILE_GD="no"
 
-while getopts "::t:j:srdxff:gnva:" OPTION; do
+PM_VERSION_MAJOR="4"
+
+while getopts "::t:j:srdxff:gnva:P:" OPTION; do
 
 	case $OPTION in
 		t)
@@ -174,12 +178,22 @@ while getopts "::t:j:srdxff:gnva:" OPTION; do
 			echo "[opt] Will pass -fsanitize=$OPTARG to compilers and linkers"
 			FSANITIZE_OPTIONS="$OPTARG"
 			;;
+		P)
+			PM_VERSION_MAJOR="$OPTARG"
+			;;
 		\?)
 			echo "Invalid option: -$OPTARG" >&2
 			exit 1
 			;;
 	esac
 done
+
+if [ "$PM_VERSION_MAJOR" -ge 5 ]; then
+	EXT_PTHREADS_VERSION="$EXT_PTHREADS_VERSION_PM5"
+else
+	EXT_PTHREADS_VERSION="$EXT_PTHREADS_VERSION_PM4"
+fi
+write_out "opt" "Compiling with configuration for PocketMine-MP $PM_VERSION_MAJOR"
 
 GMP_ABI=""
 TOOLCHAIN_PREFIX=""
@@ -1119,7 +1133,8 @@ if [[ "$HAVE_XDEBUG" == "yes" ]]; then
 	echo -n " installing..."
 	make install >> "$DIR/install.log" 2>&1
 	echo "" >> "$INSTALL_DIR/bin/php.ini" 2>&1
-	echo "zend_extension=xdebug.so" >> "$INSTALL_DIR/bin/php.ini" 2>&1
+	echo ";WARNING: When loaded, xdebug 3.2.0 will cause segfaults whenever an uncaught error is thrown, even if xdebug.mode=off. Load it at your own risk." >> "$INSTALL_DIR/bin/php.ini" 2>&1
+	echo ";zend_extension=xdebug.so" >> "$INSTALL_DIR/bin/php.ini" 2>&1
 	echo ";https://xdebug.org/docs/all_settings#mode" >> "$INSTALL_DIR/bin/php.ini" 2>&1
 	echo "xdebug.mode=off" >> "$INSTALL_DIR/bin/php.ini" 2>&1
 	echo "xdebug.start_with_request=yes" >> "$INSTALL_DIR/bin/php.ini" 2>&1

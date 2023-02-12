@@ -3,7 +3,7 @@
 REM For future users: This file MUST have CRLF line endings. If it doesn't, lots of inexplicable undesirable strange behaviour will result.
 REM Also: Don't modify this version with sed, or it will screw up your line endings.
 set PHP_MAJOR_VER=8.0
-set PHP_VER=%PHP_MAJOR_VER%.26
+set PHP_VER=%PHP_MAJOR_VER%.27
 set PHP_GIT_REV=php-%PHP_VER%
 set PHP_DISPLAY_VER=%PHP_VER%
 set PHP_SDK_VER=2.2.0
@@ -23,17 +23,19 @@ set PTHREAD_W32_VER=3.0.0
 set LEVELDB_MCPE_VER=1c7564468b41610da4f498430e795ca4de0931ff
 set LIBDEFLATE_VER=0d1779a071bcc636e5156ddb7538434da7acad22
 
-set PHP_PTHREADS_VER=4.1.4
+set PHP_PTHREADS_VER_PM4=4.2.1
+set PHP_PTHREADS_VER_PM5=5.2.4
+set PHP_PTHREADS_VER=
 set PHP_YAML_VER=2.2.2
 set PHP_CHUNKUTILS2_VER=0.3.3
-set PHP_IGBINARY_VER=3.2.12
+set PHP_IGBINARY_VER=3.2.13
 set PHP_LEVELDB_VER=317fdcd8415e1566fc2835ce2bdb8e19b890f9f3
 set PHP_CRYPTO_VER=0.3.2
 set PHP_RECURSIONGUARD_VER=0.1.0
 set PHP_MORTON_VER=0.1.2
 set PHP_LIBDEFLATE_VER=0.1.0
 set PHP_XXHASH_VER=0.1.1
-set PHP_XDEBUG_VER=3.1.6
+set PHP_XDEBUG_VER=3.2.0
 
 set script_path=%~dp0
 set log_file=%script_path%compile.log
@@ -60,6 +62,18 @@ if "%PHP_DEBUG_BUILD%"=="0" (
 	set MSBUILD_CONFIGURATION=Debug
 	call :pm-echo "Building debug binaries"
 )
+
+if "%PM_VERSION_MAJOR%"=="" (
+    set PM_VERSION_MAJOR=4
+)
+
+if "%PM_VERSION_MAJOR%" geq "5" (
+    set PHP_PTHREADS_VER=%PHP_PTHREADS_VER_PM5%
+) else (
+    set PHP_PTHREADS_VER=%PHP_PTHREADS_VER_PM4%
+)
+
+call :pm-echo "Compiling with configuration for PocketMine-MP %PM_VERSION_MAJOR%"
 
 if "%SOURCES_PATH%"=="" (
 	if "%PHP_DEBUG_BUILD%"=="0" (
@@ -341,7 +355,8 @@ call :pm-echo "Generating php.ini..."
 (echo opcache.jit=off)>>"%php_ini%"
 (echo opcache.jit_buffer_size=128M)>>"%php_ini%"
 (echo.)>>"%php_ini%"
-(echo zend_extension=php_xdebug.dll)>>"%php_ini%"
+(echo ;WARNING: When loaded, xdebug 3.2.0 will cause segfaults whenever an uncaught error is thrown, even if xdebug.mode=off. Load it at your own risk.)>>"%php_ini%"
+(echo ;zend_extension=php_xdebug.dll)>>"%php_ini%"
 (echo ;https://xdebug.org/docs/all_settings#mode)>>"%php_ini%"
 (echo xdebug.mode=off)>>"%php_ini%"
 (echo xdebug.start_with_request=yes)>>"%php_ini%"
