@@ -1,9 +1,9 @@
 ﻿$ErrorActionPreference="Stop"
 $ProgressPreference="SilentlyContinue"
 
-$PHP_VERSIONS=@("8.2.28", "8.3.20")
+$PHP_VERSIONS=@("8.1.33", "8.2.29", "8.3.25", "8.4.13", "8.5.0beta3")
 
-$PHP_SDK_VER="2.3.0"
+$PHP_SDK_VER="2.4.0"
 $ARCH="x64"
 
 #### NOTE: Tags with "v" prefixes behave weirdly in the GitHub API. They'll be stripped in some places but not others.
@@ -12,30 +12,34 @@ $ARCH="x64"
 $LIBYAML_VER="0.2.5"
 $PTHREAD_W32_VER="3.0.0"
 $LEVELDB_MCPE_VER="1c7564468b41610da4f498430e795ca4de0931ff" #release not tagged
-$LIBDEFLATE_VER="78051988f96dc8d8916310d8b24021f01bd9e102" #1.23 - see above note about "v" prefixes
+$LIBDEFLATE_VER="96836d7d9d10e3e0d53e6edb54eb908514e336c4" #1.24 - see above note about "v" prefixes
 $LIBRDKAFKA_VER="2.1.1"
-$LIBZSTD_VER="1.5.6"
+$LIBZSTD_VER="1.5.7"
 $LIBGRPC_VER="1.56.2"
 $LIBSNAPPY_VER="1.2.2"
 
-$PHP_PMMPTHREAD_VER="6.1.1"
-$PHP_YAML_VER="2.2.4"
+$PHP_PMMPTHREAD_VER="6.2.0"
+$PHP_YAML_VER="2.2.5"
 $PHP_CHUNKUTILS2_VER="0.3.5"
 $PHP_IGBINARY_VER="3.2.16"
-$PHP_LEVELDB_VER="317fdcd8415e1566fc2835ce2bdb8e19b890f9f3" #release not tagged
-$PHP_CRYPTO_VER="abbe7cbf869f96e69f2ce897271a61d32f43c7c0" #release not tagged
+$PHP_LEVELDB_VER="88071eb1b1eae96af043229104b9d813f7cbe40c" #release not tagged
+$PHP_CRYPTO_VER="999b3c7edbc7f8ca4fdeb0bb4bbae488ad0daf07" #release not tagged
 $PHP_SNAPPY_VER="0.2.3"
 $PHP_RECURSIONGUARD_VER="0.1.0"
 $PHP_MORTON_VER="0.1.2"
 $PHP_LIBDEFLATE_VER="0.2.1"
 $PHP_XXHASH_VER="0.2.0"
-$PHP_XDEBUG_VER="3.3.2"
+$PHP_XDEBUG_VER="3.4.5"
 $PHP_ARRAYDEBUG_VER="0.2.0"
-$PHP_ENCODING_VER="0.4.0"
+$PHP_ENCODING_VER="1.0.0"
 $PHP_VANILLAGENERATOR_VER="2.1.7"
 $PHP_LIBKAFKA_VER="6.0.3"
-$PHP_ZSTD_VER="0.14.0"
+$PHP_ZSTD_VER="0.15.2"
 $PHP_GRPC_VER="1.57.3"
+
+$PHP_PMMPTHREAD_VER_PHP85="4aa34a27feaa43adba5f1e93939828d1d7afdefc"
+$PHP_IGBINARY_VER_PHP85="8f8b7175c7859f1845bcdee6f7d0baeea7d07cb8"
+$PHP_XDEBUG_VER_PHP85="86727b0b05b5d0a9c4fb85021f05d7931e2c3a35"
 
 function pm-echo {
     param ([string] $message)
@@ -92,6 +96,9 @@ function write-done {
     $script:library = ""
     $script:library_version = ""
 }
+function write-cached {
+    write-status "using cache"
+}
 
 $log_file="$pwd\compile.log"
 echo "" > "$log_file"
@@ -128,7 +135,6 @@ if ($env:PHP_DEBUG_BUILD -eq 1) {
 }
 
 $MSBUILD_CONFIGURATION="RelWithDebInfo"
-$PHP_JIT_ENABLE_ARG="no"
 
 if ($PHP_DEBUG_BUILD -eq 0) {
     $OUT_PATH_REL="Release"
@@ -143,10 +149,6 @@ if ($PHP_DEBUG_BUILD -eq 0) {
     pm-echo "Building debug binaries"
 }
 
-if ($env:PHP_JIT_SUPPORT -eq 1) {
-    $PHP_JIT_ENABLE_ARG="yes"
-    pm-echo "Compiling JIT support in OPcache (unstable)"
-}
 
 function php-version-id {
     param ([string] $version)
@@ -191,35 +193,72 @@ if ($PHP_VER -eq "") {
 $PHP_GIT_REV="php-$PHP_VER"
 $PHP_DISPLAY_VER="$PHP_VER"
 
-#TODO: these should be selected by PHP base version
+$CMAKE_TARGET="Visual Studio 17 2022"
+
 $VC_VER=""
-$CMAKE_TARGET=""
+$SDL_TOOLSET_FLAG=""
+$CMAKE_TOOLSET_FLAG=""
 
 $PHP_VERSION_ID = php-version-id $PHP_VER
 if ($PHP_VERSION_ID -ge 80400) {
     $VC_VER="vs17"
-    $CMAKE_TARGET="Visual Studio 17 2022"
+    $SDK_TOOLSET_FLAG=""
+    $CMAKE_TOOLSET_FLAG=""
 } else {
+    #technically it's fine to build <8.4 with vs17, but this would make the binaries ABI-incompatible with community prebuilt extensions
     $VC_VER="vs16"
-    $CMAKE_TARGET="Visual Studio 16 2019"
+    $SDK_TOOLSET_FLAG="-s=14.29"
+    $CMAKE_TOOLSET_FLAG="-T v142"
 }
 
-pm-echo "Selected PHP $PHP_VER ($PHP_VERSION_ID) and toolset $VC_VER ($CMAKE_TARGET)"
+pm-echo "Selected PHP $PHP_VER ($PHP_VERSION_ID), SDK target $VC_VER ($SDK_TOOLSET_FLAG), CMake target $CMAKE_TARGET ($CMAKE_TOOLSET_FLAG)"
+
+if ($PHP_VERSION_ID -ge 80500) {
+    $PHP_PMMPTHREAD_VER=$PHP_PMMPTHREAD_VER_PHP85
+    $PHP_IGBINARY_VER=$PHP_IGBINARY_VER_PHP85
+    $PHP_XDEBUG_VER=$PHP_XDEBUG_VER_PHP85
+}
+$PHP_JIT_ENABLE_ARG="no"
+if ($PHP_VERSION_ID -ge 80400 -or $env:PHP_JIT_SUPPORT -eq 1) {
+    $PHP_JIT_ENABLE_ARG="yes"
+}
+
+if ($PHP_JIT_ENABLE_ARG -eq "yes") {
+    if ($PHP_VERSION_ID -lt 80400) {
+        pm-echo "[WARNING] JIT in versions below PHP 8.4 is highly unstable and not recommended"
+    } else {
+        pm-echo "[WARNING] JIT in PHP 8.4 has not been tested, use it with caution"
+    }
+} else {
+    pm-echo "JIT support in OPcache won't be compiled"
+}
 
 if ($env:SOURCES_PATH -ne $null) {
-    $SOURCES_PATH=$env:SOURCES_PATH
+    $BASE_PATH=$env:SOURCES_PATH
 } else {
-    $SOURCES_PATH="C:\pocketmine-php-$PHP_DISPLAY_VER-$($OUT_PATH_REL.ToLower())"
+    $BASE_PATH="C:\pocketmine-php"
 }
-pm-echo "Using path $SOURCES_PATH for build sources"
+$PHP_SDK_PATH="$BASE_PATH\php-sdk-binary-tools-$PHP_SDK_VER"
+$SOURCES_PATH="$BASE_PATH\php-$PHP_DISPLAY_VER-$($OUT_PATH_REL.ToLower())"
+
+pm-echo "Using path $SOURCES_PATH for PHP build sources"
+if (-not (Test-Path "$BASE_PATH")) {
+    mkdir "$BASE_PATH" >> $log_file 2>&1
+}
 
 if (Test-Path "$pwd\bin") {
     pm-echo "Deleting old binary folder..."
     Remove-Item -Recurse -Force "$pwd\bin" 2>&1
 }
 if (Test-Path $SOURCES_PATH) {
-    pm-echo "Deleting old workspace $SOURCES_PATH..."
+    pm-echo "Deleting old PHP build workspace $SOURCES_PATH..."
     Remove-Item -Recurse -Force $SOURCES_PATH 2>&1
+}
+$LIB_BUILD_DIR="$BASE_PATH\deps-build-php-$PHP_VERSION_BASE-$($OUT_PATH_REL.ToLower())"
+
+if (Test-Path "$LIB_BUILD_DIR") {
+    pm-echo "Deleting old deps build workspace $LIB_BUILD_DIR..."
+    Remove-Item -Recurse -Force "$LIB_BUILD_DIR" >> $log_file 2>&1
 }
 
 $download_cache="$pwd\download_cache"
@@ -269,11 +308,15 @@ function append-file-utf8 {
 function download-sdk {
     write-library "PHP SDK" $PHP_SDK_VER
 
-    write-download
-    $file = download-file "https://github.com/php/php-sdk-binary-tools/archive/refs/tags/php-sdk-$PHP_SDK_VER.zip" "php-sdk"
-    write-extracting
-    unzip-file $file $pwd
-    Move-Item "php-sdk-binary-tools-php-sdk-$PHP_SDK_VER" $SOURCES_PATH
+    if (Test-Path "$PHP_SDK_PATH") {
+        write-cached
+    } else {
+        write-download
+        $file = download-file "https://github.com/php/php-sdk-binary-tools/archive/refs/tags/php-sdk-$PHP_SDK_VER.zip" "php-sdk"
+        write-extracting
+        unzip-file $file $pwd
+        Move-Item "php-sdk-binary-tools-php-sdk-$PHP_SDK_VER" $PHP_SDK_PATH
+    }
     write-done
 }
 
@@ -282,7 +325,7 @@ function sdk-command {
 
     New-Item task.bat -Value $command >> $log_file 2>&1
     echo "Running SDK command: $command" >> $log_file
-    $wrap = "`"$SOURCES_PATH\phpsdk-$VC_VER-$ARCH.bat`" -t task.bat 2>&1"
+    $wrap = "`"$PHP_SDK_PATH\phpsdk-starter.bat`" -c $VC_VER -a $ARCH $SDK_TOOLSET_FLAG -t task.bat 2>&1"
     echo "SDK wrapper command: $wrap" >> $log_file
     (& cmd.exe /c $wrap) >> $log_file
     $result=$LASTEXITCODE
@@ -299,7 +342,7 @@ function sdk-command {
 function download-php-deps {
     write-library "PHP prebuilt deps" "$PHP_VERSION_BASE/$VC_VER"
     write-download
-    sdk-command "phpsdk_deps -u -t $VC_VER -b $PHP_VERSION_BASE -a $ARCH -f -d $DEPS_DIR || exit 1"
+    sdk-command "phpsdk_deps -u -t $VC_VER -b $PHP_VERSION_BASE -a $ARCH -d $DEPS_DIR || exit 1"
     write-done
 }
 
@@ -355,8 +398,8 @@ function build-grpc {
     write-install
     sdk-command "cmake -P cmake_install.cmake || exit 1"
 
-    Move-Item "third_party\protobuf\php\ext\google\protobuf" "$SOURCES_PATH\php-src\ext\protobuf" >> $log_file 2>&1
-    Move-Item "third_party\protobuf\third_party" "$SOURCES_PATH\php-src\ext\protobuf\third_party" >> $log_file 2>&1
+    Move-Item "third_party\protobuf\php\ext\google\protobuf" "$SOURCES_PATH\ext\protobuf" >> $log_file 2>&1
+    Move-Item "third_party\protobuf\third_party" "$SOURCES_PATH\ext\protobuf\third_party" >> $log_file 2>&1
 
 @"
 ARG_ENABLE("protobuf", "Enable Protobuf extension", "yes");
@@ -368,7 +411,7 @@ if (PHP_PROTOBUF != "no") {
 
   AC_DEFINE('HAVE_PROTOBUF', 1, '');
 }
-"@ | Out-File -Encoding ascii -FilePath $SOURCES_PATH\php-src\ext\protobuf\config.w32
+"@ | Out-File -Encoding ascii -FilePath $SOURCES_PATH\ext\protobuf\config.w32
 
     write-done
     Pop-Location
@@ -441,7 +484,7 @@ function build-yaml {
     Push-Location libyaml
 
     write-configure
-    sdk-command "cmake -G `"$CMAKE_TARGET`"^`
+    sdk-command "cmake -G `"$CMAKE_TARGET`" $CMAKE_TOOLSET_FLAG^`
         -DCMAKE_PREFIX_PATH=`"$DEPS_DIR`"^`
         -DCMAKE_INSTALL_PREFIX=`"$DEPS_DIR`"^`
         -DBUILD_SHARED_LIBS=ON^`
@@ -489,7 +532,7 @@ function build-leveldb {
     Push-Location leveldb
 
     write-configure
-    sdk-command "cmake -G `"$CMAKE_TARGET`"^`
+    sdk-command "cmake -G `"$CMAKE_TARGET`" $CMAKE_TOOLSET_FLAG^`
         -DCMAKE_PREFIX_PATH=`"$DEPS_DIR`"^`
         -DCMAKE_INSTALL_PREFIX=`"$DEPS_DIR`"^`
         -DBUILD_SHARED_LIBS=ON^`
@@ -518,7 +561,7 @@ function build-libdeflate {
 
     write-configure
     #TODO: not sure why we have arch here but not on other cmake targets
-    sdk-command "cmake -G `"$CMAKE_TARGET`" -A `"$ARCH`"^`
+    sdk-command "cmake -G `"$CMAKE_TARGET`" -A `"$ARCH`" $CMAKE_TOOLSET_FLAG^`
         -DCMAKE_PREFIX_PATH=`"$DEPS_DIR`"^`
         -DCMAKE_INSTALL_PREFIX=`"$DEPS_DIR`"^`
         -DLIBDEFLATE_BUILD_GZIP=OFF^`
@@ -541,7 +584,7 @@ function download-php {
     $file = download-file "https://github.com/php/php-src/archive/$PHP_GIT_REV.zip" "php"
     write-extracting
     unzip-file $file $pwd
-    Move-Item "php-src-$PHP_GIT_REV" php-src >> $log_file 2>&1
+    Move-Item "php-src-$PHP_GIT_REV" $SOURCES_PATH >> $log_file 2>&1
     write-done
 }
 
@@ -562,7 +605,7 @@ function get-github-extension {
 }
 
 function download-php-extensions {
-    Push-Location "$SOURCES_PATH\php-src\ext" >> $log_file 2>&1
+    Push-Location "$SOURCES_PATH\ext" >> $log_file 2>&1
     get-github-extension "pmmpthread" $PHP_PMMPTHREAD_VER "pmmp" "ext-pmmpthread"
     get-github-extension "vanillagenerator"      $PHP_VANILLAGENERATOR_VER      "NetherGamesMC" "ext-vanillagenerator"
     get-github-extension "yaml"                  $PHP_YAML_VER                  "php"      "pecl-file_formats-yaml"
@@ -612,22 +655,18 @@ function download-php-extensions {
 }
 
 download-sdk
-cd $SOURCES_PATH >> $log_file 2>&1
 
 pm-echo "Checking that SDK can find Visual Studio"
 #using CMAKE_TARGET for this is a bit meh but it's human readable at least
 sdk-command "exit /b 0" "Please install $CMAKE_TARGET"
 
-$DEPS_DIR="$SOURCES_PATH\deps"
+$DEPS_DIR="$BASE_PATH\deps-php-$PHP_VERSION_BASE-$($OUT_PATH_REL.ToLower())"
 #custom libs depend on some standard libs, so prepare these first
 #a bit annoying because this part of the build is slow and makes it take longer to find problems
 download-php-deps
 download-php
 
-$LIB_BUILD_DIR="$SOURCES_PATH\deps_build"
-
 mkdir $LIB_BUILD_DIR >> $log_file 2>&1
-
 cd $LIB_BUILD_DIR >> $log_file 2>&1
 
 build-snappy
@@ -640,11 +679,11 @@ build-yaml
 build-leveldb
 build-libdeflate
 
-cd $SOURCES_PATH >> $log_file 2>&1
+cd $BASE_PATH >> $log_file 2>&1
 
 download-php-extensions
 
-cd "$SOURCES_PATH\php-src"
+cd "$SOURCES_PATH"
 write-library "PHP" $PHP_VER
 write-configure
 
@@ -652,6 +691,7 @@ sdk-command "buildconf.bat"
 sdk-command "configure^`
     --with-mp=auto^`
     --with-prefix=pocketmine-php-bin^`
+    --with-php-build=`"$DEPS_DIR`"^`
     --$PHP_HAVE_DEBUG^`
     --disable-all^`
     --disable-cgi^`
@@ -724,17 +764,21 @@ write-install
 sdk-command "nmake snap"
 
 #remove ICU DLLs copied unnecessarily by nmake snap - this needs to be removed if we ever have ext/intl as a dependency
-Remove-Item "$SOURCES_PATH\php-src\$ARCH\Release_TS\php-$PHP_DISPLAY_VER\icu*.dll" >> $log_file 2>&1
+Remove-Item "$SOURCES_PATH\$ARCH\$($OUT_PATH_REL)_TS\php-$PHP_DISPLAY_VER\icu*.dll" >> $log_file 2>&1
 #remove enchant dependencies which are unnecessarily copied - this needs to be removed if we ever have ext/enchant as a dependency
-Remove-Item "$SOURCES_PATH\php-src\$ARCH\Release_TS\php-$PHP_DISPLAY_VER\glib-*.dll" >> $log_file 2>&1
-Remove-Item "$SOURCES_PATH\php-src\$ARCH\Release_TS\php-$PHP_DISPLAY_VER\gmodule-*.dll" >> $log_file 2>&1
-Remove-Item -Recurse "$SOURCES_PATH\php-src\$ARCH\Release_TS\php-$PHP_DISPLAY_VER\lib\enchant\" >> $log_file 2>&1
+Remove-Item "$SOURCES_PATH\$ARCH\$($OUT_PATH_REL)_TS\php-$PHP_DISPLAY_VER\glib-*.dll" >> $log_file 2>&1
+Remove-Item "$SOURCES_PATH\$ARCH\$($OUT_PATH_REL)_TS\php-$PHP_DISPLAY_VER\gmodule-*.dll" >> $log_file 2>&1
+Remove-Item -Recurse "$SOURCES_PATH\$ARCH\$($OUT_PATH_REL)_TS\php-$PHP_DISPLAY_VER\lib\enchant\" >> $log_file 2>&1
 
 cd $outpath >> $log_file 2>&1
-Move-Item -Force "$SOURCES_PATH\php-src\$ARCH\$($OUT_PATH_REL)_TS\php-debug-pack-*.zip" $outpath
+Move-Item -Force "$SOURCES_PATH\$ARCH\$($OUT_PATH_REL)_TS\php-debug-pack-*.zip" $outpath
 Remove-Item -Recurse bin -ErrorAction Continue >> $log_file 2>&1
 mkdir bin >> $log_file 2>&1
-Move-Item "$SOURCES_PATH\php-src\$ARCH\$($OUT_PATH_REL)_TS\php-$PHP_DISPLAY_VER" bin\php
+Move-Item "$SOURCES_PATH\$ARCH\$($OUT_PATH_REL)_TS\php-$PHP_DISPLAY_VER" bin\php
+
+mkdir bin\grpc >> $log_file 2>&1
+Move-Item "$LIB_BUILD_DIR\grpc\grpc_php_plugin.exe" "bin\grpc\grpc_php_plugin.exe" >> $log_file 2>&1
+Move-Item "$LIB_BUILD_DIR\grpc\third_party\protobuf\protoc.exe" "bin\grpc\protoc.exe" >> $log_file 2>&1
 
 mkdir bin\grpc >> $log_file 2>&1
 Move-Item "$LIB_BUILD_DIR\grpc\grpc_php_plugin.exe" "bin\grpc\grpc_php_plugin.exe" >> $log_file 2>&1
@@ -764,8 +808,11 @@ append-file-utf8 "extension=php_igbinary.dll" $php_ini
 append-file-utf8 "extension=php_leveldb.dll" $php_ini
 append-file-utf8 "extension=php_crypto.dll" $php_ini
 append-file-utf8 "extension=php_libdeflate.dll" $php_ini
+append-file-utf8 "extension=php_encoding.dll" $php_ini
 append-file-utf8 "igbinary.compact_strings=0" $php_ini
-append-file-utf8 "zend_extension=php_opcache.dll" $php_ini
+if ($PHP_VERSION_ID -lt 80500) {
+    append-file-utf8 "zend_extension=php_opcache.dll" $php_ini
+}
 append-file-utf8 "opcache.enable=1" $php_ini
 append-file-utf8 "opcache.enable_cli=1" $php_ini
 append-file-utf8 "opcache.save_comments=1" $php_ini
@@ -790,8 +837,8 @@ append-file-utf8 ";extension=php_arraydebug.dll" $php_ini
 append-file-utf8 "" $php_ini
 if ($PHP_JIT_ENABLE_ARG -eq "yes") {
     append-file-utf8 "; ---- ! WARNING ! ----" $php_ini
-    append-file-utf8 "; JIT can provide big performance improvements, but as of PHP $PHP_VER it is still unstable. For this reason, it is disabled by default." $php_ini
-    append-file-utf8 "; Enable it at your own risk. See https://www.php.net/manual/en/opcache.configuration.php#ini.opcache.jit for possible options." $php_ini
+    append-file-utf8 "; JIT can provide big performance improvements, but it may make your server crash or behave in weird ways. Use it at your own risk." $php_ini
+    append-file-utf8 "; See https://www.php.net/manual/en/opcache.configuration.php#ini.opcache.jit for possible options." $php_ini
     append-file-utf8 "opcache.jit=off" $php_ini
     append-file-utf8 "opcache.jit_buffer_size=128M" $php_ini
     append-file-utf8 "" $php_ini
@@ -805,8 +852,6 @@ append-file-utf8 ";The following overrides allow profiler, gc stats and traces t
 append-file-utf8 "xdebug.profiler_output_name=cachegrind.%s.%p.%r" $php_ini
 append-file-utf8 "xdebug.gc_stats_output_name=gcstats.%s.%p.%r" $php_ini
 append-file-utf8 "xdebug.trace_output_name=trace.%s.%p.%r" $php_ini
-append-file-utf8 ";Optional experimental extensions" $php_ini
-append-file-utf8 "extension=php_encoding.dll" $php_ini
 write-done
 pm-echo "Xdebug is included, but disabled by default. To enable it, change 'xdebug.mode' in your php.ini file."
 

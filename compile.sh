@@ -1,45 +1,54 @@
 #!/usr/bin/env bash
-PHP_VERSIONS=("8.2.28" "8.3.20")
+PHP_VERSIONS=("8.1.33" "8.2.29" "8.3.25" "8.4.13" "8.5.0beta3")
 
 #### NOTE: Tags with "v" prefixes behave weirdly in the GitHub API. They'll be stripped in some places but not others.
 #### Use commit hashes to avoid this.
 
 ZLIB_VERSION="1.3.1"
 GMP_VERSION="6.3.0"
-CURL_VERSION="curl-8_9_1"
+
+### Think twice before updating the minor/major versions of curl.
+### curl is by far the worst offender when it comes to random
+### build breakages on updates.
+CURL_VERSION="curl-8_13_0"
+
 YAML_VERSION="0.2.5"
 LEVELDB_VERSION="1c7564468b41610da4f498430e795ca4de0931ff" #release not tagged
-LIBXML_VERSION="2.10.1" #2.10.2 requires automake 1.16.3, which isn't easily available on Ubuntu 20.04
-LIBPNG_VERSION="1.6.43"
+LIBXML_VERSION="2.14.5"
+LIBPNG_VERSION="1.6.50"
 LIBJPEG_VERSION="9f"
-OPENSSL_VERSION="3.4.0"
-LIBZIP_VERSION="1.10.1"
-SQLITE3_VERSION="3450200" #3.45.2
-LIBDEFLATE_VERSION="78051988f96dc8d8916310d8b24021f01bd9e102" #1.23 - see above note about "v" prefixes
+OPENSSL_VERSION="3.5.2"
+LIBZIP_VERSION="1.11.4"
+SQLITE3_VERSION="3500400" #3.50.4
+LIBDEFLATE_VERSION="96836d7d9d10e3e0d53e6edb54eb908514e336c4" #1.24 - see above note about "v" prefixes
 LIBRDKAFKA_VER="2.1.1"
-LIBZSTD_VER="1.5.6"
+LIBZSTD_VER="1.5.7"
 LIBGRPC_VER="1.58.1"
 LIBSNAPPY_VER="1.2.2"
 SASL2_VERSION="2.1.28"
 
-EXT_PMMPTHREAD_VERSION="6.1.1"
-EXT_YAML_VERSION="2.2.4"
-EXT_LEVELDB_VERSION="317fdcd8415e1566fc2835ce2bdb8e19b890f9f3" #release not tagged
+EXT_PMMPTHREAD_VERSION="6.2.0"
+EXT_YAML_VERSION="2.2.5"
+EXT_LEVELDB_VERSION="88071eb1b1eae96af043229104b9d813f7cbe40c" #release not tagged
 EXT_CHUNKUTILS2_VERSION="0.3.5"
-EXT_XDEBUG_VERSION="3.3.2"
+EXT_XDEBUG_VERSION="3.4.5"
 EXT_IGBINARY_VERSION="3.2.16"
-EXT_CRYPTO_VERSION="abbe7cbf869f96e69f2ce897271a61d32f43c7c0" #release not tagged
+EXT_CRYPTO_VERSION="999b3c7edbc7f8ca4fdeb0bb4bbae488ad0daf07" #release not tagged
 EXT_SNAPPY_VERSION="0.2.3"
 EXT_RECURSIONGUARD_VERSION="0.1.0"
 EXT_LIBDEFLATE_VERSION="0.2.1"
 EXT_MORTON_VERSION="0.1.2"
 EXT_XXHASH_VERSION="0.2.0"
 EXT_ARRAYDEBUG_VERSION="0.2.0"
-EXT_ENCODING_VERSION="0.4.0"
+EXT_ENCODING_VERSION="1.0.0"
 EXT_RDKAFKA_VERSION="6.0.3"
-EXT_ZSTD_VERSION="0.14.0"
+EXT_ZSTD_VERSION="0.15.2"
 EXT_GRPC_VERSION="1.57.3"
 EXT_VANILLAGENERATOR_VERSION="abd059fd2ca79888aab3b9c5070d83ceea55fada"
+
+EXT_PMMPTHREAD_VERSION_PHP85="4aa34a27feaa43adba5f1e93939828d1d7afdefc"
+EXT_XDEBUG_VERSION_PHP85="86727b0b05b5d0a9c4fb85021f05d7931e2c3a35"
+EXT_IGBINARY_VERSION_PHP85="8f8b7175c7859f1845bcdee6f7d0baeea7d07cb8"
 
 function write_out {
 	echo "[$1] $2"
@@ -240,7 +249,7 @@ while getopts "::t:j:sdDFxfgnva:P:c:l:Jiz:" OPTION; do
 			PM_VERSION_MAJOR="$OPTARG"
 			;;
 		J)
-			write_out "opt" "Compiling JIT support in OPcache (unstable)"
+			write_out "opt" "Compiling JIT support in OPcache"
 			HAVE_OPCACHE_JIT="yes"
 			;;
 		i)
@@ -309,6 +318,24 @@ fi
 
 PHP_VERSION_ID=$(php_version_id "$PHP_VERSION")
 write_out "opt" "Selected PHP $PHP_VERSION ($PHP_VERSION_ID)"
+
+if [ $PHP_VERSION_ID -ge 80500 ]; then
+  EXT_PMMPTHREAD_VERSION="$EXT_PMMPTHREAD_VERSION_PHP85"
+  EXT_XDEBUG_VERSION="$EXT_XDEBUG_VERSION_PHP85"
+  EXT_IGBINARY_VERSION="$EXT_IGBINARY_VERSION_PHP85"
+fi
+if [ $PHP_VERSION_ID -ge 80400 ]; then
+  HAVE_OPCACHE_JIT="yes"
+fi
+if [ "$HAVE_OPCACHE_JIT" == "yes" ]; then
+  if [ $PHP_VERSION_ID -lt 80400 ]; then
+    write_out "WARNING" "JIT in versions below PHP 8.4 is highly unstable and not recommended"
+  else
+    write_out "WARNING" "JIT in PHP 8.4 has not been tested, use it with caution"
+  fi
+else
+  write_out "INFO" "JIT support in OPcache won't be compiled"
+fi
 
 #Needed to use aliases
 shopt -s expand_aliases
@@ -419,6 +446,7 @@ if [ "$IS_CROSSCOMPILE" == "yes" ]; then
 		DO_STATIC="yes"
 		OPENSSL_TARGET="linux-aarch64"
 		export ac_cv_func_fnmatch_works=yes #musl should be OK
+
 		write_out "INFO" "Cross-compiling for Android ARMv8 (aarch64)"
 	#TODO: add cross-compile for aarch64 platforms (ios, rpi)
 	else
@@ -823,6 +851,8 @@ function build_kafka {
 			-DWITH_CURL=OFF \
 			-DENABLE_LZ4_EXT=OFF \
 			-DCMAKE_BUILD_TYPE=Release \
+			-DRDKAFKA_BUILD_TESTS=OFF \
+			-DRDKAFKA_BUILD_EXAMPLES=OFF \
 			$CMAKE_GLOBAL_EXTRA_FLAGS \
 			$EXTRA_FLAGS \
 			>> "$DIR/install.log" 2>&1
@@ -997,6 +1027,7 @@ function build_curl {
 		--without-brotli \
 		--without-nghttp2 \
 		--without-zstd \
+		--without-libpsl \
 		--with-zlib="$INSTALL_DIR" \
 		--with-ssl="$INSTALL_DIR" \
 		--enable-threaded-resolver \
@@ -1243,6 +1274,7 @@ function build_libzip {
 			-DENABLE_GNUTLS=OFF \
 			-DENABLE_MBEDTLS=OFF \
 			-DENABLE_LZMA=OFF \
+			-DBUILD_OSSFUZZ=OFF \
 			-DENABLE_ZSTD=OFF >> "$DIR/install.log" 2>&1
 		write_compile
 		make -j $THREADS >> "$DIR/install.log" 2>&1 && mark_cache
@@ -1261,9 +1293,9 @@ function build_libzip {
 
 function build_sqlite3 {
 	if [ "$DO_STATIC" == "yes" ]; then
-		local EXTRA_FLAGS="--enable-static=yes --enable-shared=no"
+		local EXTRA_FLAGS="--disable-shared"
 	else
-		local EXTRA_FLAGS="--enable-static=no --enable-shared=yes"
+		local EXTRA_FLAGS="--disable-static"
 	fi
 
 	write_library sqlite3 "$SQLITE3_VERSION"
@@ -1279,7 +1311,6 @@ function build_sqlite3 {
 		LDFLAGS="$LDFLAGS -L${INSTALL_DIR}/lib" CPPFLAGS="$CPPFLAGS -I${INSTALL_DIR}/include" RANLIB=$RANLIB ./configure \
 		--prefix="$INSTALL_DIR" \
 		--disable-dependency-tracking \
-		--enable-static-shell=no \
 		$EXTRA_FLAGS \
 		$CONFIGURE_FLAGS >> "$DIR/install.log" 2>&1
 		write_compile
@@ -1540,6 +1571,9 @@ rm -f ./aclocal.m4 >> "$DIR/install.log" 2>&1
 rm -rf ./autom4te.cache/ >> "$DIR/install.log" 2>&1
 rm -f ./configure >> "$DIR/install.log" 2>&1
 
+# Patch files for snappy, the effected lines causing the build to fail.
+patch "$BUILD_DIR/php/ext/snappy/config.m4" "$DIR/patches/config.m4.patch" >> "$DIR/install.log" 2>&1
+
 ./buildconf --force >> "$DIR/install.log" 2>&1
 
 #hack for curl with pkg-config (ext/curl doesn't give --static to pkg-config on static builds)
@@ -1564,6 +1598,16 @@ if [ "$IS_CROSSCOMPILE" == "yes" ]; then
 		if [ "$COMPILE_FOR_ANDROID" == "no" ]; then
 			export LIBS="$LIBS -lpthread -ldl -lresolv"
 		else
+			#workarounds for musl 1.2.5
+			if [ "$PHP_VERSION_ID" -lt 80400 ]; then
+				sed -i=".backup" 's/cookie_io_functions_use_off64_t=yes/cookie_io_functions_use_off64_t=no/' ./configure
+				export ac_cv_pread=yes
+				export ac_cv_pwrite=yes
+			else
+				export php_cv_type_cookie_off64_t=no
+				export php_cv_func_pread=yes
+				export php_cv_func_pwrite=yes
+			fi
 			export LIBS="$LIBS -lpthread -lresolv"
 		fi
 	else
@@ -1739,7 +1783,9 @@ echo "recursionguard.enabled=0 ;disabled due to minor performance impact, only e
 echo "extension_dir=./$INSTALL_DIR/lib/php/extensions/no-debug-zts-20230831" >> "$INSTALL_DIR/bin/php.ini"
 
 if [ "$HAVE_OPCACHE" == "yes" ]; then
-	echo "zend_extension=opcache.so" >> "$INSTALL_DIR/bin/php.ini"
+	if [ "$PHP_VERSION_ID" -lt 80500 ]; then
+		echo "zend_extension=opcache.so" >> "$INSTALL_DIR/bin/php.ini"
+	fi
 	echo "opcache.enable=1" >> "$INSTALL_DIR/bin/php.ini"
 	echo "opcache.enable_cli=1" >> "$INSTALL_DIR/bin/php.ini"
 	echo "opcache.save_comments=1" >> "$INSTALL_DIR/bin/php.ini"
@@ -1750,8 +1796,8 @@ if [ "$HAVE_OPCACHE" == "yes" ]; then
 	if [ "$HAVE_OPCACHE_JIT" == "yes" ]; then
 		echo "" >> "$INSTALL_DIR/bin/php.ini"
 		echo "; ---- ! WARNING ! ----" >> "$INSTALL_DIR/bin/php.ini"
-		echo "; JIT can provide big performance improvements, but as of PHP $PHP_VERSION it is still unstable. For this reason, it is disabled by default." >> "$INSTALL_DIR/bin/php.ini"
-		echo "; Enable it at your own risk. See https://www.php.net/manual/en/opcache.configuration.php#ini.opcache.jit for possible options." >> "$INSTALL_DIR/bin/php.ini"
+		echo "; JIT can provide big performance improvements, but it may make your server crash or behave in weird ways. Use it at your own risk." >> "$INSTALL_DIR/bin/php.ini"
+		echo "; See https://www.php.net/manual/en/opcache.configuration.php#ini.opcache.jit for possible options." >> "$INSTALL_DIR/bin/php.ini"
 		echo "opcache.jit=off" >> "$INSTALL_DIR/bin/php.ini"
 		echo "opcache.jit_buffer_size=128M" >> "$INSTALL_DIR/bin/php.ini"
 	fi
@@ -1790,28 +1836,6 @@ if [[ "$HAVE_XDEBUG" == "yes" ]]; then
 	write_out INFO "Xdebug is included, but disabled by default. To enable it, change 'xdebug.mode' in your php.ini file."
 fi
 
-function separate_symbols {
-	local libname="$1"
-	local output_dirname
-
-	output_dirname="$SYMBOLS_DIR/$(dirname $libname)"
-	mkdir -p "$output_dirname" >> "$DIR/install.log" 2>&1
-	cp "$libname" "$SYMBOLS_DIR/$libname.debug" >> "$DIR/install.log" 2>&1
-	"$STRIP" -S "$libname" >> "$DIR/install.log" 2>&1 || rm "$SYMBOLS_DIR/$libname.debug" #if this fails, this probably isn't an executable binary
-}
-
-if [ "$SEPARATE_SYMBOLS" != "no" ]; then
-	echo -n "[INFO] Separating debugging symbols into $SYMBOLS_DIR..."
-	cd "$INSTALL_DIR"
-	find "lib" \( -name '*.so' -o -name '*.so.*' -o -name '*.dylib' -o -name '*.dylib.*' \) -print0 | while IFS= read -r -d '' file; do
-		separate_symbols "$file"
-	done
-	for file in "bin/"*; do
-		separate_symbols "$file"
-	done
-	cd "$DIR"
-	write_done
-fi
 
 cd "$DIR"
 if [ "$DO_CLEANUP" == "yes" ]; then
@@ -1836,6 +1860,22 @@ if [ "$DO_CLEANUP" == "yes" ]; then
 	mv "$INSTALL_DIR/include_copy/grpc++" "$INSTALL_DIR/include/grpc++" >> "$DIR/install.log" 2>&1
 	mv "$INSTALL_DIR/include_copy/grpcpp" "$INSTALL_DIR/include/grpcpp" >> "$DIR/install.log" 2>&1
 	rm -r -f "$INSTALL_DIR/include_copy" >> "$DIR/install.log" 2>&1
+fi
+
+if [ "$SEPARATE_SYMBOLS" != "no" ]; then
+	echo -n "[INFO] Separating debugging symbols into $SYMBOLS_DIR..."
+	rm -rf "$SYMBOLS_DIR" || true 2>&1
+	mkdir -p "$SYMBOLS_DIR" || true 2>&1
+	cp -a "$INSTALL_DIR/." "$SYMBOLS_DIR/" || true 2>&1
+	cd "$INSTALL_DIR"
+	find "lib" \( -name '*.so' -o -name '*.so.*' -o -name '*.dylib' -o -name '*.dylib.*' \) -print0 | while IFS= read -r -d '' file; do
+		"$STRIP" -S "$file" >> "$DIR/install.log" 2>&1 || true #if this fails, this probably isn't an executable binary
+	done
+	for file in "bin/"*; do
+		"$STRIP" -S "$file" >> "$DIR/install.log" 2>&1 || true #if this fails, this probably isn't an executable binary
+	done
+	cd "$DIR"
+	write_done
 fi
 
 date >> "$DIR/install.log" 2>&1
