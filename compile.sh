@@ -22,6 +22,7 @@ LIBGRPC_VER="1.58.1"
 LIBSNAPPY_VER="1.2.2"
 SASL2_VERSION="2.1.28"
 
+EXT_PTHREADS_VERSION="4.2.2"
 EXT_PMMPTHREAD_VERSION="6.1.1"
 EXT_YAML_VERSION="2.2.4"
 EXT_LEVELDB_VERSION="317fdcd8415e1566fc2835ce2bdb8e19b890f9f3" #release not tagged
@@ -35,7 +36,7 @@ EXT_LIBDEFLATE_VERSION="0.2.1"
 EXT_MORTON_VERSION="0.1.2"
 EXT_XXHASH_VERSION="0.2.0"
 EXT_ARRAYDEBUG_VERSION="0.2.0"
-EXT_ENCODING_VERSION="0.4.0"
+EXT_ENCODING_VERSION="0.3.0"
 EXT_RDKAFKA_VERSION="6.0.3"
 EXT_ZSTD_VERSION="0.14.0"
 EXT_GRPC_VERSION="1.57.3"
@@ -272,7 +273,7 @@ function php_version_id {
 PREFERRED_PHP_VERSION_BASE=""
 case $PM_VERSION_MAJOR in
 	5)
-		PREFERRED_PHP_VERSION_BASE="8.2"
+		PREFERRED_PHP_VERSION_BASE="8.3"
 		;;
 	"")
 		write_error "Please specify PocketMine-MP major version target with -P (e.g. -P5)"
@@ -1400,7 +1401,8 @@ function get_pecl_extension {
 cd "$BUILD_DIR/php"
 write_out "PHP" "Downloading additional extensions..."
 
-get_github_extension "pmmpthread" "$EXT_PMMPTHREAD_VERSION" "pmmp" "ext-pmmpthread"
+# get_github_extension "pmmpthread" "$EXT_PMMPTHREAD_VERSION" "pmmp" "ext-pmmpthread"
+get_github_extension "pthreads" "$EXT_PTHREADS_VERSION" "pmmp" "ext-pmmpthread" 
 
 
 get_github_extension "yaml" "$EXT_YAML_VERSION" "php" "pecl-file_formats-yaml"
@@ -1624,7 +1626,7 @@ $HAS_DEBUG \
 --enable-mbstring \
 --disable-mbregex \
 --enable-calendar \
---enable-pmmpthread \
+--enable-pthreads \
 --enable-fileinfo \
 --with-libxml \
 --enable-xml \
